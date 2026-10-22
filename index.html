@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Basta! Digital</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- MQTT via WebSockets (Conexión corporativa tolerante a firewalls) -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body { 
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #F7F7F7;
+    }
+    :root {
+      --dhl-yellow: #FFCC00;
+      --dhl-red: #D40511;
+      --dhl-dark-red: #BA040F;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col text-neutral-800">
+
+  <!-- TOP HEADER CORPORATIVO -->
+  <header class="bg-[#FFCC00] border-b-4 border-[#D40511] shadow-md sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-[#D40511] flex items-center justify-center font-black text-[#FFCC00] text-2xl shadow">
+          !
+        </div>
+        <div>
+          <h1 class="font-black text-xl tracking-tighter text-[#D40511] leading-none flex items-center gap-1.5">
+            BASTA! <span class="text-neutral-900 text-sm font-extrabold uppercase tracking-widest bg-white/70 px-2 py-0.5 rounded">DIGITAL</span>
+          </h1>
+          <p id="navSubtitle" class="text-xs font-semibold text-neutral-800">Evaluación automática y comparativa</p>
+        </div>
+      </div>
+
+      <div id="gameHeaderStats" class="hidden items-center gap-3">
+        <div class="px-3 py-1.5 rounded-lg bg-white/90 border border-neutral-300 text-xs font-bold flex items-center gap-2 shadow-sm">
+          <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Sala: <strong id="lblRoomCode" class="text-[#D40511] tracking-wider font-mono">-</strong></span>
+        </div>
+        <button id="btnShareLink" onclick="shareRoomLink()" class="px-3.5 py-1.5 rounded-lg bg-[#D40511] hover:bg-[#BA040F] transition text-xs font-bold text-white flex items-center gap-1.5 shadow">
+          <span>🔗</span> Copiar Link
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <main class="max-w-6xl mx-auto p-4 flex-1 w-full flex flex-col justify-center">
+
+    <!-- 1. PANTALLA DE INGRESO Y SALAS -->
+    <section id="screenLobby" class="max-w-md mx-auto w-full py-8">
+      <div class="bg-white border-2 border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div class="w-full h-2.5 bg-[#D40511] absolute top-0 left-0"></div>
+
+        <div class="text-center mb-6">
+          <span class="px-3 py-1 rounded-full text-xs font-extrabold bg-[#FFCC00] text-neutral-900 border border-amber-400">
+            ¡ALTO EL LÁPIZ! ✏️
+          </span>
+          <h2 class="text-2xl font-black mt-3 text-neutral-900">Ingresar al Juego</h2>
+          <p class="text-neutral-600 text-xs mt-1">Escribe tu nombre y crea o únete a una sala.</p>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Tu Nombre o Apodo</label>
+            <input type="text" id="inputPlayerName" placeholder="Ej. Monse" maxlength="20"
+              class="w-full bg-neutral-50 border-2 border-neutral-300 rounded-xl px-4 py-3 text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#D40511] font-bold transition">
+          </div>
+
+          <div class="pt-2 border-t border-neutral-200">
+            <label class="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Código de Sala (Para unirte)</label>
+            <div class="flex gap-2">
+              <input type="text" id="inputRoomCode" placeholder="Ej. BASTA-741" uppercase
+                class="flex-1 bg-neutral-50 border-2 border-neutral-300 rounded-xl px-4 py-3 text-neutral-900 uppercase font-mono font-bold tracking-wider placeholder-neutral-400 focus:outline-none focus:border-[#D40511] transition">
+              <button onclick="joinRoom()" class="px-5 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 font-black text-white transition text-xs uppercase tracking-wider flex items-center gap-1.5">
+                Unirme
+              </button>
+            </div>
+          </div>
+
+          <div class="relative py-2 flex items-center justify-center">
+            <span class="border-t border-neutral-200 w-full absolute"></span>
+            <span class="bg-white px-3 text-xs text-neutral-500 relative font-bold">O EMPIEZA COMO ANFITRIÓN</span>
+          </div>
+
+          <button onclick="createRoom()" class="w-full py-3.5 rounded-xl bg-[#D40511] hover:bg-[#BA040F] font-black text-white text-sm shadow-md transition transform active:scale-[0.98] flex items-center justify-center gap-2">
+            <span>🎉</span> Crear Sala Nueva (Ser Anfitrión)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. PANTALLA DEL JUEGO -->
+    <section id="screenGame" class="hidden space-y-6">
+
+      <!-- DASHBOARD SUPERIOR -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- RULETA Y LETRA -->
+        <div class="lg:col-span-5 bg-white border border-neutral-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-extrabold tracking-wider text-neutral-500 uppercase">Letra en Juego</span>
+            <span id="roleBadge" class="px-2.5 py-0.5 rounded text-xs font-extrabold bg-[#FFCC00] text-neutral-900 border border-amber-300">Jugador</span>
+          </div>
+
+          <div class="flex items-center justify-around py-2">
+            <div id="boxLetter" class="w-28 h-28 rounded-2xl bg-neutral-900 border-4 border-[#FFCC00] flex items-center justify-center shadow-md relative overflow-hidden">
+              <span id="displayLetter" class="text-6xl font-black text-[#FFCC00]">?</span>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <button id="btnSpin" onclick="hostSpinRoulette()" class="px-4 py-2.5 rounded-xl bg-[#FFCC00] hover:bg-amber-400 text-neutral-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                <span>🎲</span> Girar Ruleta
+              </button>
+              <button id="btnNewRound" onclick="hostStartRound()" class="px-4 py-2 rounded-xl bg-[#D40511] hover:bg-[#BA040F] text-white font-extrabold text-xs transition disabled:opacity-40 disabled:cursor-not-allowed">
+                🔄 Iniciar Ronda
+              </button>
+            </div>
+          </div>
+
+          <div class="text-xs font-bold text-neutral-600 text-center mt-2" id="roundStatusText">
+            Esperando que el anfitrión gire la ruleta...
+          </div>
+        </div>
+
+        <!-- TEMPORIZADOR Y PARTICIPANTES -->
+        <div class="lg:col-span-7 bg-white border border-neutral-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-extrabold tracking-wider text-neutral-500 uppercase">Participantes (<span id="countPlayers">1</span>)</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-neutral-600">Ronda: <strong id="lblRoundNum" class="text-neutral-900">1</strong></span>
+              <span id="lblTimer" class="px-3 py-0.5 rounded-full text-xs font-mono font-black bg-neutral-900 text-[#FFCC00]">03:00</span>
+            </div>
+          </div>
+
+          <div id="listPlayers" class="flex flex-wrap gap-2 py-2 max-h-24 overflow-y-auto"></div>
+
+          <div class="w-full bg-neutral-200 rounded-full h-2.5 overflow-hidden mt-3 border border-neutral-300">
+            <div id="timerProgress" class="bg-[#D40511] h-full w-full transition-all duration-300"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FORMULARIO DE RESPUESTAS -->
+      <div class="bg-white border border-neutral-200 rounded-3xl p-6 shadow-md relative">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200">
+          <div>
+            <h3 class="text-lg font-black text-neutral-900 flex items-center gap-2">
+              📝 Tu Hoja de Respuestas
+              <span id="badgeFilledCount" class="text-xs px-2.5 py-0.5 rounded-full bg-neutral-100 text-neutral-700 font-bold border border-neutral-200">0 / 8 completados</span>
+            </h3>
+            <p class="text-xs font-semibold text-neutral-500 mt-0.5">Escribe palabras válidas de más de una letra que comiencen con la letra activa.</p>
+          </div>
+
+          <button id="btnBasta" onclick="triggerBasta()" disabled
+            class="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#D40511] hover:bg-[#BA040F] text-white font-black text-lg tracking-wider uppercase shadow-lg shadow-red-500/25 transition transform active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <span>🛑</span> ¡BASTA PARA TODOS!
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6" id="categoriesContainer"></div>
+      </div>
+
+      <!-- TABLA DE CLASIFICACIÓN -->
+      <div class="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+        <h4 class="text-xs font-black tracking-wider text-neutral-700 uppercase mb-3 flex items-center gap-2">
+          🏆 Marcador Acumulado
+        </h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="text-xs uppercase bg-[#FFCC00]/20 text-neutral-700 border-b border-neutral-200">
+              <tr>
+                <th class="py-2.5 px-4 font-black">Jugador</th>
+                <th class="py-2.5 px-4 text-center font-black">Rol</th>
+                <th class="py-2.5 px-4 text-center font-black">Última Ronda</th>
+                <th class="py-2.5 px-4 text-right font-black">Puntaje Total</th>
+              </tr>
+            </thead>
+            <tbody id="tableScoresBody" class="divide-y divide-neutral-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: RESULTADOS Y CALIFICACIÓN AUTOMÁTICA -->
+  <div id="modalEvaluation" class="fixed inset-0 bg-neutral-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-neutral-300 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      
+      <div class="p-5 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+        <div>
+          <h3 class="text-xl font-black text-neutral-900 flex items-center gap-2">
+            📊 Resultados de la Ronda
+            <span class="text-sm px-2.5 py-0.5 rounded-full bg-[#FFCC00] text-neutral-900 border border-amber-400 font-mono font-bold">
+              Letra: <span id="evalLetter">A</span>
+            </span>
+          </h3>
+          <p class="text-xs font-medium text-neutral-600 mt-1">
+            <strong>100 pts:</strong> Única | <strong>50 pts:</strong> Repetida por 2 | <strong>25 pts:</strong> Repetida por 3+ | <strong>0 pts:</strong> Una sola letra o vacío
+          </p>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-bold text-neutral-500 block">Tu Suma de Ronda</span>
+          <span id="evalRoundTotal" class="text-2xl font-black text-[#D40511]">0 pts</span>
+        </div>
+      </div>
+
+      <!-- TABLA COMPARATIVA CONSOLIDADA -->
+      <div class="p-5 overflow-y-auto flex-1">
+        <div id="evalStatusBanner" class="mb-4 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+          <span class="animate-spin text-base">⏳</span> Consolidando y comparando respuestas de todos los participantes...
+        </div>
+        <div class="overflow-x-auto border border-neutral-200 rounded-2xl shadow-sm">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead id="evalTableHead" class="bg-neutral-100 text-neutral-700 uppercase font-extrabold border-b border-neutral-200"></thead>
+            <tbody id="evalTableBody" class="divide-y divide-neutral-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-neutral-200 bg-neutral-50 flex justify-end gap-3">
+        <button onclick="closeEvaluationModal()" class="px-6 py-2.5 rounded-xl bg-[#D40511] hover:bg-[#BA040F] text-white font-black text-xs uppercase tracking-wider shadow transition">
+          Cerrar y Continuar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    const AudioEngine = {
+      ctx: null,
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+      },
+      playTick() {
+        try {
+          this.init();
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(650, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(850, this.ctx.currentTime + 0.05);
+          gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.05);
+        } catch(e){}
+      },
+      playBasta() {
+        try {
+          this.init();
+          const now = this.ctx.currentTime;
+          [350, 440, 580].forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + i * 0.1);
+            gain.gain.setValueAtTime(0.25, now + i * 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + i * 0.1);
+            osc.stop(now + i * 0.1 + 0.3);
+          });
+        } catch(e){}
+      }
+    };
+
+    // --- NUEVAS 8 CATEGORÍAS SOLICITADAS ---
+    const CATEGORIES = [
+      { id: 'nombre', label: 'NOMBRE', placeholder: 'Ej. Alberto' },
+      { id: 'apellido', label: 'APELLIDO', placeholder: 'Ej. Álvarez' },
+      { id: 'pais_ciudad', label: 'PAÍS / CIUDAD', placeholder: 'Ej. Argentina' },
+      { id: 'animal', label: 'ANIMAL', placeholder: 'Ej. Águila' },
+      { id: 'cosa_objeto', label: 'COSA / OBJETO', placeholder: 'Ej. Anillo' },
+      { id: 'flor_fruto', label: 'FLOR / FRUTO', placeholder: 'Ej. Arándano' },
+      { id: 'color', label: 'COLOR', placeholder: 'Ej. Amarillo' },
+      { id: 'cancion_pelicula', label: 'CANCIÓN / PELÍCULA', placeholder: 'Ej. Avatar' }
+    ];
+
+    const ALPHABET = "ABCDEFGHILMNOPQRSTUV".split("");
+
+    const State = {
+      isHost: false,
+      playerName: '',
+      roomCode: '',
+      playerId: 'usr_' + Math.random().toString(36).substring(2, 9),
+      mqttClient: null,
+      currentLetter: '?',
+      round: 1,
+      roundActive: false,
+      timerSeconds: 180,
+      timerInterval: null,
+      players: {}, // id: { name, isHost, score, lastScore, answers: {} }
+      myAnswers: {}
+    };
+
+    function normalizeText(str) {
+      if (!str) return '';
+      return str
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderCategoriesForm();
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        document.getElementById('inputRoomCode').value = roomParam.toUpperCase();
+        showToast(`Sala ${roomParam} detectada en el enlace.`, 'info');
+      }
+    });
+
+    function renderCategoriesForm() {
+      const container = document.getElementById('categoriesContainer');
+      container.innerHTML = CATEGORIES.map(cat => `
+        <div class="bg-neutral-50 border-2 border-neutral-200 rounded-2xl p-4 flex flex-col justify-between focus-within:border-[#D40511] transition shadow-sm">
+          <label class="text-xs font-extrabold text-neutral-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+            <span>${cat.label}</span>
+            <span id="badge-${cat.id}" class="text-[10px] text-neutral-400 font-bold">Pendiente</span>
+          </label>
+          <input type="text" id="cat-${cat.id}" data-category="${cat.id}" placeholder="${cat.placeholder}" disabled
+            oninput="handleInputChange('${cat.id}')"
+            class="w-full bg-white border border-neutral-300 rounded-xl px-3 py-2.5 text-neutral-900 font-bold placeholder-neutral-400 focus:outline-none focus:border-[#D40511] transition text-sm">
+        </div>
+      `).join('');
+    }
+
+    function getTopic(subtopic = '') {
+      return `basta_corp_v1/${State.roomCode}${subtopic ? '/' + subtopic : ''}`;
+    }
+
+    function createRoom() {
+      const name = document.getElementById('inputPlayerName').value.trim();
+      if (!name) return alert('Por favor ingresa tu nombre.');
+
+      State.playerName = name;
+      State.isHost = true;
+      State.roomCode = 'BASTA-' + Math.floor(100 + Math.random() * 900);
+
+      initBrokerConnection();
+    }
+
+    function joinRoom() {
+      const name = document.getElementById('inputPlayerName').value.trim();
+      const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
+
+      if (!name) return alert('Por favor ingresa tu nombre.');
+      if (!code) return alert('Por favor ingresa el código de sala.');
+
+      State.playerName = name;
+      State.isHost = false;
+      State.roomCode = code;
+
+      initBrokerConnection();
+    }
+
+    function initBrokerConnection() {
+      showToast('Conectando a la sala...', 'info');
+
+      const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+      const client = mqtt.connect(brokerUrl, {
+        clientId: 'basta_' + State.playerId,
+        clean: true,
+        connectTimeout: 5000,
+        reconnectPeriod: 2000
+      });
+
+      State.mqttClient = client;
+
+      client.on('connect', () => {
+        document.getElementById('connDot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
+        launchGameScreen();
+
+        const roomTopic = getTopic('+');
+        client.subscribe(roomTopic, (err) => {
+          if (!err) {
+            State.players[State.playerId] = {
+              name: State.playerName,
+              isHost: State.isHost,
+              score: 0,
+              lastScore: 0,
+              answers: {}
+            };
+
+            publishMessage('presence', {
+              playerId: State.playerId,
+              name: State.playerName,
+              isHost: State.isHost
+            });
+
+            setInterval(() => {
+              publishMessage('heartbeat', {
+                playerId: State.playerId,
+                name: State.playerName,
+                isHost: State.isHost
+              });
+            }, 3000);
+
+            showToast(`¡Conectado exitosamente a la sala ${State.roomCode}!`, 'success');
+            updatePlayersUI();
+          }
+        });
+      });
+
+      client.on('message', (topic, message) => {
+        try {
+          const payload = JSON.parse(message.toString());
+          handleIncomingMessage(topic, payload);
+        } catch(e) {
+          console.error(e);
+        }
+      });
+
+      client.on('error', (err) => {
+        console.error('MQTT Error:', err);
+        showToast('Error de red al sincronizar.', 'error');
+      });
+    }
+
+    function publishMessage(subtopic, data) {
+      if (State.mqttClient && State.mqttClient.connected) {
+        State.mqttClient.publish(getTopic(subtopic), JSON.stringify(data));
+      }
+    }
+
+    function handleIncomingMessage(topic, data) {
+      const sub = topic.split('/').pop();
+
+      if (sub === 'presence' || sub === 'heartbeat') {
+        const isNew = !State.players[data.playerId];
+        State.players[data.playerId] = {
+          name: data.name,
+          isHost: data.isHost,
+          score: State.players[data.playerId]?.score || 0,
+          lastScore: State.players[data.playerId]?.lastScore || 0,
+          answers: State.players[data.playerId]?.answers || {}
+        };
+
+        if (isNew && data.playerId !== State.playerId) {
+          showToast(`${data.name} entró a la sala`, 'info');
+          if (State.isHost) {
+            publishMessage('sync_state', {
+              round: State.round,
+              currentLetter: State.currentLetter,
+              roundActive: State.roundActive,
+              players: State.players
+            });
+          }
+        }
+        updatePlayersUI();
+      }
+
+      if (sub === 'sync_state') {
+        if (!State.isHost) {
+          State.round = data.round;
+          State.currentLetter = data.currentLetter;
+          State.roundActive = data.roundActive;
+          document.getElementById('lblRoundNum').textContent = State.round;
+          updateLetterUI(data.currentLetter);
+
+          Object.entries(data.players).forEach(([id, p]) => {
+            if (State.players[id]) {
+              State.players[id].score = p.score;
+              State.players[id].lastScore = p.lastScore;
+            } else {
+              State.players[id] = p;
+            }
+          });
+          updatePlayersUI();
+        }
+      }
+
+      if (sub === 'spin') {
+        animateRoulette(data.finalLetter);
+      }
+
+      if (sub === 'start_round') {
+        startRoundLocally(data.letter);
+      }
+
+      if (sub === 'basta') {
+        onBastaTriggered(data.byName);
+      }
+
+      if (sub === 'submit_answers') {
+        if (State.players[data.playerId]) {
+          State.players[data.playerId].answers = data.answers;
+        }
+        const modal = document.getElementById('modalEvaluation');
+        if (!modal.classList.contains('hidden')) {
+          calculateAndRenderComparison();
+        }
+      }
+    }
+
+    function launchGameScreen() {
+      document.getElementById('screenLobby').classList.add('hidden');
+      document.getElementById('screenGame').classList.remove('hidden');
+      document.getElementById('gameHeaderStats').classList.remove('hidden');
+      document.getElementById('gameHeaderStats').classList.add('flex');
+      document.getElementById('lblRoomCode').textContent = State.roomCode;
+
+      const roleBadge = document.getElementById('roleBadge');
+      if (State.isHost) {
+        roleBadge.textContent = '👑 Anfitrión';
+        roleBadge.className = 'px-2.5 py-0.5 rounded text-xs font-black bg-[#FFCC00] text-neutral-900 border border-amber-400';
+      } else {
+        roleBadge.textContent = 'Participante';
+        roleBadge.className = 'px-2.5 py-0.5 rounded text-xs font-bold bg-neutral-200 text-neutral-800';
+        document.getElementById('btnSpin').classList.add('hidden');
+        document.getElementById('btnNewRound').classList.add('hidden');
+      }
+    }
+
+    function hostSpinRoulette() {
+      if (!State.isHost) return;
+      const finalLetter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+      publishMessage('spin', { finalLetter });
+      animateRoulette(finalLetter);
+    }
+
+    function animateRoulette(finalLetter) {
+      const display = document.getElementById('displayLetter');
+      const box = document.getElementById('boxLetter');
+      let iterations = 0;
+      const maxIterations = 20;
+
+      const interval = setInterval(() => {
+        AudioEngine.playTick();
+        display.textContent = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+        display.style.transform = `scale(${1 + Math.random() * 0.15})`;
+        iterations++;
+
+        if (iterations >= maxIterations) {
+          clearInterval(interval);
+          display.textContent = finalLetter;
+          display.style.transform = 'scale(1)';
+          State.currentLetter = finalLetter;
+          box.classList.add('border-[#D40511]');
+          setTimeout(() => box.classList.remove('border-[#D40511]'), 1200);
+
+          if (State.isHost) {
+            setTimeout(() => {
+              hostStartRound();
+            }, 800);
+          }
+        }
+      }, 70);
+    }
+
+    function hostStartRound() {
+      if (!State.isHost) return;
+      if (State.currentLetter === '?') {
+        return alert('Primero gira la ruleta para obtener una letra.');
+      }
+      publishMessage('start_round', { letter: State.currentLetter });
+      startRoundLocally(State.currentLetter);
+    }
+
+    function startRoundLocally(letter) {
+      State.roundActive = true;
+      State.currentLetter = letter;
+      updateLetterUI(letter);
+
+      Object.keys(State.players).forEach(id => {
+        State.players[id].answers = {};
+      });
+
+      CATEGORIES.forEach(cat => {
+        const inp = document.getElementById(`cat-${cat.id}`);
+        inp.value = '';
+        inp.disabled = false;
+        document.getElementById(`badge-${cat.id}`).textContent = 'Pendiente';
+        document.getElementById(`badge-${cat.id}`).className = 'text-[10px] text-neutral-400 font-bold';
+      });
+
+      document.getElementById('btnBasta').disabled = false;
+      document.getElementById('roundStatusText').textContent = '¡Escribe lo más rápido posible!';
+      updateFilledProgress();
+
+      setTimeout(() => {
+        const first = document.getElementById(`cat-${CATEGORIES[0].id}`);
+        if (first) first.focus();
+      }, 100);
+
+      startTimer(180);
+    }
+
+    function handleInputChange(catId) {
+      const val = document.getElementById(`cat-${catId}`).value.trim();
+      const badge = document.getElementById(`badge-${catId}`);
+      if (val.length > 0) {
+        badge.textContent = 'Listo';
+        badge.className = 'text-[10px] text-emerald-600 font-black';
+      } else {
+        badge.textContent = 'Pendiente';
+        badge.className = 'text-[10px] text-neutral-400 font-bold';
+      }
+      updateFilledProgress();
+    }
+
+    function updateFilledProgress() {
+      let count = 0;
+      CATEGORIES.forEach(cat => {
+        if (document.getElementById(`cat-${cat.id}`).value.trim().length > 0) count++;
+      });
+      document.getElementById('badgeFilledCount').textContent = `${count} / ${CATEGORIES.length} completados`;
+    }
+
+    function triggerBasta() {
+      if (!State.roundActive) return;
+      publishMessage('basta', { byName: State.playerName });
+      onBastaTriggered(State.playerName);
+    }
+
+    function onBastaTriggered(byName) {
+      State.roundActive = false;
+      clearInterval(State.timerInterval);
+      AudioEngine.playBasta();
+
+      CATEGORIES.forEach(cat => {
+        const inp = document.getElementById(`cat-${cat.id}`);
+        inp.disabled = true;
+        State.myAnswers[cat.id] = inp.value.trim();
+      });
+
+      if (State.players[State.playerId]) {
+        State.players[State.playerId].answers = State.myAnswers;
+      }
+
+      publishMessage('submit_answers', {
+        playerId: State.playerId,
+        answers: State.myAnswers
+      });
+
+      document.getElementById('btnBasta').disabled = true;
+      document.getElementById('roundStatusText').textContent = `¡BASTA cantado por ${byName}! Evaluando respuestas...`;
+
+      if (window.confetti) {
+        confetti({ particleCount: 75, spread: 60, origin: { y: 0.6 } });
+      }
+
+      setTimeout(() => {
+        openEvaluationModal();
+      }, 1000);
+    }
+
+    function startTimer(duration) {
+      clearInterval(State.timerInterval);
+      State.timerSeconds = duration;
+      const bar = document.getElementById('timerProgress');
+      const lbl = document.getElementById('lblTimer');
+
+      State.timerInterval = setInterval(() => {
+        State.timerSeconds--;
+        const mins = String(Math.floor(State.timerSeconds / 60)).padStart(2, '0');
+        const secs = String(State.timerSeconds % 60).padStart(2, '0');
+        lbl.textContent = `${mins}:${secs}`;
+        bar.style.width = `${(State.timerSeconds / duration) * 100}%`;
+
+        if (State.timerSeconds <= 0) {
+          clearInterval(State.timerInterval);
+          onBastaTriggered('Tiempo agotado');
+        }
+      }, 1000);
+    }
+
+    // --- EVALUACIÓN AUTOMÁTICA CON REGLA DE LONGITUD Y REPETICIONES ---
+    function openEvaluationModal() {
+      const modal = document.getElementById('modalEvaluation');
+      document.getElementById('evalLetter').textContent = State.currentLetter;
+      modal.classList.remove('hidden');
+
+      calculateAndRenderComparison();
+
+      setTimeout(() => {
+        calculateAndRenderComparison();
+        document.getElementById('evalStatusBanner').classList.add('hidden');
+      }, 2000);
+    }
+
+    function calculateAndRenderComparison() {
+      const thead = document.getElementById('evalTableHead');
+      const tbody = document.getElementById('evalTableBody');
+      const playerList = Object.entries(State.players); // [[id, data], ...]
+
+      thead.innerHTML = `
+        <tr>
+          <th class="py-3 px-4 font-black">Categoría</th>
+          ${playerList.map(([id, p]) => `
+            <th class="py-3 px-4 text-center font-black ${id === State.playerId ? 'bg-amber-100 text-[#D40511]' : ''}">
+              ${p.name} ${id === State.playerId ? '(Tú)' : ''}
+            </th>
+          `).join('')}
+        </tr>
+      `;
+
+      const roundPoints = {};
+      playerList.forEach(([id]) => roundPoints[id] = 0);
+
+      let rowsHtml = '';
+
+      CATEGORIES.forEach(cat => {
+        // Mapeo solo para respuestas VÁLIDAS (más de 1 caracter)
+        const wordUsers = {};
+
+        playerList.forEach(([id, p]) => {
+          const ans = p.answers ? p.answers[cat.id] : '';
+          const norm = normalizeText(ans);
+          // REGLA: Debe tener al menos 2 letras para ser evaluable
+          if (norm.length >= 2) {
+            if (!wordUsers[norm]) wordUsers[norm] = [];
+            wordUsers[norm].push(p.name);
+          }
+        });
+
+        const cellsHtml = playerList.map(([id, p]) => {
+          const rawAnswer = p.answers && p.answers[cat.id] ? p.answers[cat.id].trim() : '';
+          const norm = normalizeText(rawAnswer);
+
+          let pts = 0;
+          let badgeColor = 'bg-neutral-100 text-neutral-400 border-neutral-200';
+          let badgeText = '0 pts';
+          let matchInfoHtml = '';
+
+          // 1. Caso: Vacío o no respondió
+          if (norm.length === 0) {
+            badgeColor = 'bg-neutral-100 text-neutral-400 border-neutral-200';
+            badgeText = '0 pts (vacío)';
+          }
+          // 2. Caso: Solo una letra (Inválida por regla de juego)
+          else if (norm.length === 1) {
+            pts = 0;
+            badgeColor = 'bg-rose-100 text-[#D40511] border-rose-300';
+            badgeText = '0 pts (solo 1 letra)';
+            matchInfoHtml = `<div class="text-[10px] font-bold text-rose-700 mt-1">⚠️ Respuesta incompleta</div>`;
+          }
+          // 3. Caso: Respuesta completa (>= 2 caracteres)
+          else {
+            const allWhoWroteThis = wordUsers[norm] || [];
+            const count = allWhoWroteThis.length;
+            const others = allWhoWroteThis.filter(name => name !== p.name);
+
+            if (count === 1) {
+              pts = 100;
+              badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+              badgeText = '100 pts (única)';
+            } else if (count === 2) {
+              pts = 50;
+              badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
+              badgeText = '50 pts (repetida)';
+              matchInfoHtml = `<div class="text-[11px] font-bold text-amber-900 mt-1">🤝 Repetido con: <span class="underline decoration-[#D40511] font-black">${others.join(', ')}</span></div>`;
+            } else {
+              pts = 25; // 3 o más
+              badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
+              badgeText = '25 pts (3+ rep.)';
+              matchInfoHtml = `<div class="text-[11px] font-bold text-blue-900 mt-1">👥 Repetido con: <span class="underline decoration-[#D40511] font-black">${others.join(', ')}</span></div>`;
+            }
+          }
+
+          roundPoints[id] += pts;
+
+          return `
+            <td class="py-3 px-4 text-center ${id === State.playerId ? 'bg-amber-50/50 font-bold' : ''}">
+              <div class="font-extrabold text-neutral-900 text-sm">
+                ${rawAnswer || '<span class="text-neutral-400 italic font-normal">(Vacío)</span>'}
+              </div>
+              <span class="inline-block mt-1 text-[10px] font-black px-2 py-0.5 rounded-full border ${badgeColor}">
+                ${badgeText}
+              </span>
+              ${matchInfoHtml}
+            </td>
+          `;
+        }).join('');
+
+        rowsHtml += `
+          <tr class="hover:bg-neutral-50/70 transition">
+            <td class="py-3 px-4 font-black text-neutral-700 bg-neutral-50/50">${cat.label}</td>
+            ${cellsHtml}
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = rowsHtml;
+
+      const myTotal = roundPoints[State.playerId] || 0;
+      document.getElementById('evalRoundTotal').textContent = `${myTotal} pts`;
+
+      playerList.forEach(([id]) => {
+        State.players[id].lastScore = roundPoints[id];
+      });
+    }
+
+    function closeEvaluationModal() {
+      Object.keys(State.players).forEach(id => {
+        State.players[id].score = (State.players[id].score || 0) + (State.players[id].lastScore || 0);
+      });
+
+      if (State.isHost) {
+        State.round++;
+        document.getElementById('lblRoundNum').textContent = State.round;
+        publishMessage('sync_state', {
+          round: State.round,
+          currentLetter: State.currentLetter,
+          roundActive: false,
+          players: State.players
+        });
+      }
+
+      updatePlayersUI();
+      document.getElementById('modalEvaluation').classList.add('hidden');
+      showToast('¡Puntajes calculados y agregados al marcador general!', 'success');
+    }
+
+    function updateLetterUI(letter) {
+      document.getElementById('displayLetter').textContent = letter;
+    }
+
+    function updatePlayersUI() {
+      const list = document.getElementById('listPlayers');
+      const tableBody = document.getElementById('tableScoresBody');
+      const count = Object.keys(State.players).length;
+      document.getElementById('countPlayers').textContent = count;
+
+      list.innerHTML = Object.entries(State.players).map(([id, p]) => `
+        <span class="px-3 py-1 rounded-full text-xs font-black bg-white border border-neutral-300 text-neutral-800 flex items-center gap-1.5 shadow-sm">
+          <span class="w-2.5 h-2.5 rounded-full ${p.isHost ? 'bg-[#FFCC00] border border-amber-500' : 'bg-emerald-500'}"></span>
+          ${p.name} ${id === State.playerId ? '(Tú)' : ''}
+        </span>
+      `).join('');
+
+      const sorted = Object.values(State.players).sort((a, b) => b.score - a.score);
+      tableBody.innerHTML = sorted.map((p, index) => `
+        <tr class="hover:bg-neutral-50 transition">
+          <td class="py-3 px-4 font-black flex items-center gap-2">
+            <span class="text-xs text-neutral-400">#${index + 1}</span>
+            <span class="text-neutral-900">${p.name}</span>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <span class="text-xs px-2.5 py-0.5 rounded font-black ${p.isHost ? 'bg-[#FFCC00] text-neutral-900' : 'bg-neutral-100 text-neutral-700'}">
+              ${p.isHost ? 'Anfitrión' : 'Participante'}
+            </span>
+          </td>
+          <td class="py-3 px-4 text-center text-neutral-600 font-mono font-bold">+${p.lastScore || 0}</td>
+          <td class="py-3 px-4 text-right font-black text-[#D40511] font-mono text-base">${p.score || 0} pts</td>
+        </tr>
+      `).join('');
+    }
+
+    function shareRoomLink() {
+      const shareUrl = `${window.location.origin}${window.location.pathname}?room=${State.roomCode}`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('¡Enlace de sala copiado al portapapeles!', 'success');
+        }).catch(() => {
+          prompt('Copia este enlace para compartir:', shareUrl);
+        });
+      } else {
+        prompt('Copia este enlace para compartir:', shareUrl);
+      }
+    }
+
+    function showToast(msg, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-[#D40511] text-white',
+        info: 'bg-neutral-900 text-white'
+      };
+      toast.className = `${colors[type] || colors.info} px-4 py-2.5 rounded-xl shadow-xl text-xs font-bold transition transform duration-300 flex items-center gap-2`;
+      toast.textContent = msg;
+
+      const container = document.getElementById('toastContainer');
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>
